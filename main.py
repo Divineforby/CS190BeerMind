@@ -199,6 +199,7 @@ def validate(model, validIter, X_valid):
             # can simply interpret time as another batch
             # This will be fine since sum of sum can be thought of as just
             # one sum
+            output /= output.shape[1]
             output = output.view(output.shape[0]*output.shape[1], output.shape[2])
             labels = labels.view(-1)
 
@@ -278,7 +279,7 @@ def train(model, X_train, X_valid, cfg):
                 all_loss.append(batch_loss)
                 
             # TODO: Implement validation
-            if batch_count % 1000 == 0:
+            if batch_count % 8000 == 0:
                 # Validate and save
                 vloss = validate(model, validIter, X_valid)
                 print("Validation on epoch %d on batch % has loss %f" % (e,batch_count,vloss))

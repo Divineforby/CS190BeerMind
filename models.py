@@ -11,12 +11,10 @@ class baselineLSTM(nn.Module):
         # Keep in mind to include initialization for initial hidden states of LSTM, you
         # are going to need it, so design this class wisely.
         
-        # Hidden recurrent layers
-       
         
         # Output recurrent layers and initialized
         self.output = torch.nn.LSTM(input_size=config['input_dim'], 
-                                    hidden_size=config['output_dim'], num_layers=config['layers'], dropout=config['dropout'], 
+                                    hidden_size=config['output_dim'], num_layers=1, dropout=config['dropout'], 
                                     batch_first=True, bidirectional=config['bidirectional'])
         # Initialized hh weights
         torch_init.xavier_normal_(self.output.weight_hh_l0)
@@ -26,7 +24,8 @@ class baselineLSTM(nn.Module):
     def forward(self, sequence):
         # Takes in the sequence of the form (batch_size x sequence_length x input_dim) and
         # returns the output of form (batch_size x sequence_length x output_dim)
-        
+  
+        #Output layer
         out, (h,c) = self.output(sequence)
-        # Apply softmax ont the outputs
-        return torch.nn.functional.log_softmax(out, dim=2),(h,c)
+        # Apply softmax on the outputs
+        return out,(h,c)
