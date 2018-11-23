@@ -70,7 +70,7 @@ def char2oh(padded,translate, beers):
     # Concatenate the items 
     
     # Return both the concatenated and just the one hot
-    return np.c_[tiled_meta, chars],chars
+    return np.c_[tiled_meta, chars],ch
     
 
 def process_train_data(data):
@@ -109,8 +109,7 @@ def process_train_data(data):
     
     # Since the labels are simply the next characters, we take all characters except the last one
     # for the review, and everything but the first one for the labels
-    # Argmax to get back the character indices for the labels
-    return torch.Tensor(reviews[:,0:-1,:]), torch.Tensor(labels[:,1:,:]).argmax(dim=2)
+    return torch.Tensor(reviews[:,0:-1,:]), torch.Tensor(labels[:,1:]).type(torch.LongTensor)
     
     
 def train_valid_split(data):
@@ -174,7 +173,7 @@ def getBatchIter(data, batchSize):
 def validate(model, validIter, X_valid):
     # TODO: Run the model on the entire validation set for loss
     # Loss
-    Criterion = torch.nn.NLLLoss()
+    Criterion = torch.nn.CrossEntropyLoss()
     # No need for gradient
     with torch.no_grad():
         totalLoss = 0
@@ -199,8 +198,7 @@ def validate(model, validIter, X_valid):
             # can simply interpret time as another batch
             # This will be fine since sum of sum can be thought of as just
             # one sum
-            output /= output.shape[1]
-            output = output.view(output.shape[0]*output.shape[1], output.shape[2])
+            output = output.contiguous().view(-1, output.shape[2])
             labels = labels.view(-1)
 
             # Get loss and compute gradients
@@ -226,7 +224,7 @@ def train(model, X_train, X_valid, cfg):
     
     
     # Define loss and optimizer
-    Criterion = torch.nn.NLLLoss() # We'll use NLL
+    Criterion = torch.nn.CrossEntropyLoss() # We'll use NLL
     Optimizer = optim.Adam(model.parameters(), lr=l_rate, weight_decay=penalty) # Let's use ADAM
     
     # Size of each batch
@@ -261,7 +259,8 @@ def train(model, X_train, X_valid, cfg):
             # can simply interpret time as another batch
             # This will be fine since sum of sum can be thought of as just
             # one sum
-            output = output.view(output.shape[0]*output.shape[1], output.shape[2])
+
+            output = output.contiguous().view(-1, output.shape[2])
             labels = labels.view(-1)
 
             # Get loss and compute gradients
@@ -277,9 +276,10 @@ def train(model, X_train, X_valid, cfg):
                 batch_loss /= 50
                 print("On batch %d with loss %f" % (batch_count, batch_loss))
                 all_loss.append(batch_loss)
+                batch_loss = 0
                 
             # TODO: Implement validation
-            if batch_count % 8000 == 0:
+            if batch_count % 3000 == 0:
                 # Validate and save
                 vloss = validate(model, validIter, X_valid)
                 print("Validation on epoch %d on batch % has loss %f" % (e,batch_count,vloss))
