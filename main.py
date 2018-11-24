@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -19,7 +19,7 @@ import pickle
 import sys
 
 
-# In[ ]:
+# In[6]:
 
 
 def load_data(fname):
@@ -375,13 +375,17 @@ def generate(model, X_test, cfg):
     # Get the dictionary to translate between beer style and index
     with open("BeerDict.pkl", "rb") as f:
         beers = pickle.load(f)
+        
+    # Get the dictionary to translate the indices back to ASCII
+    with open("oneHot2ASCII.pkl", "rb") as f:
+        ASCII = pickle.load(f)
+        
     allGenerated = []
     with torch.no_grad():
         # Get iterator
         testIter = getBatchIter(X_test, batchSize = 1)
     
-        for batch_count, batchInd in enumerate(testIter, 0):
-            print(batch_count)
+        for batch_count, batchInd in enumerate(testIter, 10):
              # Get the dataframe for the batch
             batchFrame = X_test.iloc[batchInd]
 
@@ -398,8 +402,14 @@ def generate(model, X_test, cfg):
             generated = np.array(start).reshape(-1,1)
             
             probs, hc = model(batch)
+            
+            # Current to length of the strings
+            curlen = 1
             # While not all batches have at least one EOS we continue generating.
             while(not((generated == 110).any(axis=1).all())):
+                # If the string length is greater than the max allowed length, break
+                if curlen > cfg['max_len']:
+                    break
                 # Batch is in the shape of batchSize x 1 x input dim
                 # Feed the batch to get the outputs
                 probs, hc = model(batch, hc)
@@ -412,16 +422,22 @@ def generate(model, X_test, cfg):
                 sampled = np.array(torch.distributions.Categorical(probs).sample())
 
                 # Concatenate the sampled to our generated
-                generated = np.c_[generated,sampled]
+                generated = np.c_[generated,sampled].astype(int)
+                # Increase length
+                curlen += 1
                 
                 # Make our next input
                 newInput,_ = char2oh(np.c_[metas, sampled], translate, beers)
                 batch = torch.Tensor(newInput)
                 batch = batch.to(computing_device)
             
-            allGenerated.append(generated)
+            
+            allGenerated += generated.tolist()
         
-            return allGenerated
+        # Process each sentence back to ASCII
+        allGenerated = [''.join([chr(ASCII[c]) for c in s]) for s in allGenerated]
+        
+        return allGenerated
         
     
 def save_to_file(outputs, fname):
@@ -431,7 +447,7 @@ def save_to_file(outputs, fname):
     
 
 
-# In[ ]:
+# In[3]:
 
 
 if __name__ == "__main__":
@@ -450,7 +466,7 @@ if __name__ == "__main__":
         computing_device = torch.device("cpu")
     model.to(computing_device)
     
-    train(model, X_train, X_valid, cfg) # Train the model
+    #train(model, X_train, X_valid, cfg) # Train the model
     #outputs = generate(model, X_test, cfg) # Generate the outputs for test data
     #save_to_file(outputs, out_fname) # Save the generated outputs to a file
 
