@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -19,7 +19,7 @@ import pickle
 import sys
 
 
-# In[2]:
+# In[ ]:
 
 
 def load_data(fname):
@@ -229,6 +229,10 @@ def validate(model, validIter, X_valid):
             loss = Criterion(output,labels)
             totalLoss += float(loss)
             
+            del output
+            del labels
+            del loss
+            
             # Progress bar
             if batch_count % 50 == 0:
                 print("Validation: On batch %d" % (batch_count))
@@ -252,8 +256,8 @@ def train(model, X_train, X_valid, cfg):
     Optimizer = optim.Adam(model.parameters(), lr=l_rate, weight_decay=penalty) # Let's use ADAM
     
     # Size of each batch
-    trainbatchSize = 150
-    validbatchSize = 150
+    trainbatchSize = 64
+    validbatchSize = 128
     
     # Create the batch iterator for the data
     trainIter = getBatchIter(X_train, trainbatchSize)
@@ -294,18 +298,26 @@ def train(model, X_train, X_valid, cfg):
             output = output.contiguous().view(-1, output.shape[2])
             labels = labels.view(-1)
             
+            # Reset the gradients of the graph
             Optimizer.zero_grad()
             # Get loss and compute gradients
             loss = Criterion(output,labels)
             loss.backward()
             
           
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
+            # Clip the gradient so it doesn't explode
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             
             # Optimize step
             Optimizer.step()
             batch_loss += float(loss)
-
+            
+            # Delete unneeded references
+            del loss
+            del output
+            del batch
+            del labels
+            
             # Progress bar
             if batch_count % 50 == 0:
                 batch_loss /= 50
@@ -319,9 +331,10 @@ def train(model, X_train, X_valid, cfg):
             # Save model checkpoint
             if batch_count % 1000 == 0:
                 # Model checkpoint
-                torch.save(model.state_dict(), 'ModelCheckpoints/BaseLSTM.mdl')   
+                torch.save(model.state_dict(), 'ModelCheckpoints/LSTM.mdl')   
                 
             # TODO: Implement validation
+            
             if batch_count % 3500 == 0:
                 # Validate and save
                 vloss = validate(model, validIter, X_valid)
@@ -343,7 +356,7 @@ def train(model, X_train, X_valid, cfg):
                     if spike >= thresh:
                         print("Early stopping on epoch %d" % e)
                         return
-                        
+                
             
         print("Completed epoch %d" % e)
     
@@ -418,7 +431,7 @@ def save_to_file(outputs, fname):
     
 
 
-# In[3]:
+# In[ ]:
 
 
 if __name__ == "__main__":
@@ -430,7 +443,7 @@ if __name__ == "__main__":
     test_data = load_data(test_data_fname) # Generating the pandas DataFrame
     X_train, X_valid = train_valid_split(train_data) # Splitting the train data into train-valid data
     
-    model = baselineLSTM(cfg) # Replace this with model = <your model name>(cfg)
+    model = LSTM(cfg) # Replace this with model = <your model name>(cfg)
     if cfg['cuda']:
         computing_device = torch.device("cuda")
     else:
