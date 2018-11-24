@@ -21,11 +21,15 @@ class baselineLSTM(nn.Module):
         # Initialize ih weights
         torch_init.xavier_normal_(self.output.weight_ih_l0)
         
-    def forward(self, sequence):
+    def forward(self, sequence, hc=None):
         # Takes in the sequence of the form (batch_size x sequence_length x input_dim) and
         # returns the output of form (batch_size x sequence_length x output_dim)
-  
-        #Output layer
-        out, (h,c) = self.output(sequence)
+        if hc == None:
+            #Output layer if no hidden/cell
+            out, (h,c) = self.output(sequence)
+        else:
+            #Output layer if hidden/cell
+            out, (h,c) = self.output(sequence, hc)
+            
         # Apply softmax on the outputs
         return out,(h,c)

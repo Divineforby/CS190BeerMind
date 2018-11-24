@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -17,9 +16,10 @@ from configs import cfg
 import pandas as pd
 from nltk.translate import bleu_score
 import pickle
+import sys
 
 
-# In[ ]:
+# In[2]:
 
 
 def load_data(fname):
@@ -97,7 +97,7 @@ def process_train_data(data):
             toOnehot.append(torch.Tensor([beers[rev['beer/style']]] + [rev['review/overall']] + 
                                          [translate[ord(x)] for x in list(chr(0)+rev['review/text']+chr(1))]))
     
-    # Pad all smaller sentences with 1s to signify <EOS>
+    # No need to pad, we can just stack 
     padded = pad_data(toOnehot, translate[1])
     del toOnehot
 
@@ -140,7 +140,31 @@ def process_test_data(data):
     # TODO: Takes in pandas DataFrame and returns a numpy array (or a torch Tensor/ Variable)
     # that has all input features. Note that test data does not contain any review so you don't
     # have to worry about one hot encoding the data.
-    raise NotImplementedError
+    
+    # Get the dictionary to translate between ASCII and onehot index
+    with open("ASCII2oneHot.pkl", "rb") as f:
+        translate = pickle.load(f)
+    
+    # Get the dictionary to translate between beer style and index
+    with open("BeerDict.pkl", "rb") as f:
+        beers = pickle.load(f)
+        
+    tostk = []
+    # Take each row and establish the metadata||<SOS> 
+    for idx,rev in data.iterrows():
+        tostk.append(torch.Tensor([beers[rev['beer/style']]] + [rev['review/overall']] + 
+                                     [translate[0]]))
+                        
+    # Stack the tensors
+    stked = torch.stack(tostk)
+    del tostk
+    
+    # Pass back the meta data to concatenate in each time step
+    orig = stked
+    stked, start = char2oh(np.array(stked), translate, beers)
+    
+    return torch.Tensor(stked), orig
+        
 
     
 def pad_data(orig_data, pad):
@@ -224,18 +248,25 @@ def train(model, X_train, X_valid, cfg):
     
     
     # Define loss and optimizer
-    Criterion = torch.nn.CrossEntropyLoss() # We'll use NLL
+    Criterion = torch.nn.CrossEntropyLoss() # We'll use cross entropy
     Optimizer = optim.Adam(model.parameters(), lr=l_rate, weight_decay=penalty) # Let's use ADAM
     
     # Size of each batch
-    batchSize = 150
+    trainbatchSize = 150
+    validbatchSize = 150
     
     # Create the batch iterator for the data
-    trainIter = getBatchIter(X_train, batchSize)
-    validIter = getBatchIter(X_valid, batchSize)
+    trainIter = getBatchIter(X_train, trainbatchSize)
+    validIter = getBatchIter(X_valid, validbatchSize)
     
+    # For graphs
     all_loss = []
     v_loss = []
+    
+    # Early stopping conditions
+    thresh = 2
+    spikes = 0
+    
     # Training loop
     for e in epochs:
         batch_loss = 0
@@ -262,10 +293,14 @@ def train(model, X_train, X_valid, cfg):
 
             output = output.contiguous().view(-1, output.shape[2])
             labels = labels.view(-1)
-
+            
+            Optimizer.zero_grad()
             # Get loss and compute gradients
             loss = Criterion(output,labels)
             loss.backward()
+            
+          
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
             
             # Optimize step
             Optimizer.step()
@@ -278,27 +313,103 @@ def train(model, X_train, X_valid, cfg):
                 all_loss.append(batch_loss)
                 batch_loss = 0
                 
+                # Flush the write buffer
+                sys.stdout.flush()
+                
+            # Save model checkpoint
+            if batch_count % 1000 == 0:
+                # Model checkpoint
+                torch.save(model.state_dict(), 'ModelCheckpoints/BaseLSTM.mdl')   
+                
             # TODO: Implement validation
-            if batch_count % 3000 == 0:
+            if batch_count % 3500 == 0:
                 # Validate and save
                 vloss = validate(model, validIter, X_valid)
                 print("Validation on epoch %d on batch % has loss %f" % (e,batch_count,vloss))
                 v_loss.append(vloss)
                 
-                # Model checkpoint
-                torch.save(model.state_dict(), 'ModelCheckpoints/BaseLSTM'+str(batch_count+1)+'.mdl')           
+                # If there's more than one loss, we can start comparing
+                # to check for early stopping
+                if len(v_loss) > 1:
+                    
+                    # If we see an increase, we add 1 to the counter
+                    if v_loss[-1] > v_loss[-2]:
+                        spike += 1
+                    # Else, we reset the counter
+                    else:
+                        spike = 0
+                    
+                    # If we have continously spiked >=- thresh, we stop
+                    if spike >= thresh:
+                        print("Early stopping on epoch %d" % e)
+                        return
+                        
             
         print("Completed epoch %d" % e)
     
-    print("Completed Training")
+    print("Completed Training after %d epochs" % e)
         
     
     
 def generate(model, X_test, cfg):
     # TODO: Given n rows in test data, generate a list of n strings, where each string is the review
     # corresponding to each input row in test data.
-    raise NotImplementedError
     
+    # Get the dictionary to translate between ASCII and onehot index
+    with open("ASCII2oneHot.pkl", "rb") as f:
+        translate = pickle.load(f)
+    
+    # Get the dictionary to translate between beer style and index
+    with open("BeerDict.pkl", "rb") as f:
+        beers = pickle.load(f)
+    allGenerated = []
+    with torch.no_grad():
+        # Get iterator
+        testIter = getBatchIter(X_test, batchSize = 1)
+    
+        for batch_count, batchInd in enumerate(testIter, 0):
+            print(batch_count)
+             # Get the dataframe for the batch
+            batchFrame = X_test.iloc[batchInd]
+
+            # Process the batch for test data
+            # Orig is the array of meta data and <SOS> character
+            batch, orig = process_test_data(batchFrame)
+            batch = batch.to(computing_device)
+            
+            # Starting characters and meta datas for the next time step
+            start = orig[:,-1]
+            metas = orig[:,0:2]
+            
+            # The generated strings so far
+            generated = np.array(start).reshape(-1,1)
+            
+            probs, hc = model(batch)
+            # While not all batches have at least one EOS we continue generating.
+            while(not((generated == 110).any(axis=1).all())):
+                # Batch is in the shape of batchSize x 1 x input dim
+                # Feed the batch to get the outputs
+                probs, hc = model(batch, hc)
+
+                # Softmax over the input dim to get the probabilities
+                # Divide by temperature to implement the temperature softmax
+                probs = torch.nn.functional.softmax(probs/cfg['gen_temp'], dim = 2)
+
+                # Sample from our batchsize of probabilities to get batchsize of next output
+                sampled = np.array(torch.distributions.Categorical(probs).sample())
+
+                # Concatenate the sampled to our generated
+                generated = np.c_[generated,sampled]
+                
+                # Make our next input
+                newInput,_ = char2oh(np.c_[metas, sampled], translate, beers)
+                batch = torch.Tensor(newInput)
+                batch = batch.to(computing_device)
+            
+            allGenerated.append(generated)
+        
+            return allGenerated
+        
     
 def save_to_file(outputs, fname):
     # TODO: Given the list of generated review outputs and output file name, save all these reviews to
@@ -307,7 +418,7 @@ def save_to_file(outputs, fname):
     
 
 
-# In[ ]:
+# In[3]:
 
 
 if __name__ == "__main__":
@@ -327,6 +438,6 @@ if __name__ == "__main__":
     model.to(computing_device)
     
     train(model, X_train, X_valid, cfg) # Train the model
-    outputs = generate(model, X_test, cfg) # Generate the outputs for test data
-    save_to_file(outputs, out_fname) # Save the generated outputs to a file
+    #outputs = generate(model, X_test, cfg) # Generate the outputs for test data
+    #save_to_file(outputs, out_fname) # Save the generated outputs to a file
 
