@@ -72,7 +72,7 @@ class LSTM(nn.Module):
     
 class baselineGRU(nn.Module):
     def __init__(self, config):
-        super(baselineLSTM, self).__init__()
+        super(baselineGRU, self).__init__()
         
         # Initialize your layers and variables that you want;
         # Keep in mind to include initialization for initial hidden states of LSTM, you
@@ -104,7 +104,7 @@ class baselineGRU(nn.Module):
 
 class GRU(nn.Module):
     def __init__(self, config):
-        super(baselineLSTM, self).__init__()
+        super(GRU, self).__init__()
         
         # Initialize your layers and variables that you want;
         # Keep in mind to include initialization for initial hidden states of LSTM, you
@@ -119,6 +119,11 @@ class GRU(nn.Module):
         torch_init.xavier_normal_(self.output.weight_hh_l0)
         # Initialize ih weights
         torch_init.xavier_normal_(self.output.weight_ih_l0)
+        
+         # Initialized hh weights
+        torch_init.xavier_normal_(self.output.weight_hh_l1)
+        # Initialize ih weights
+        torch_init.xavier_normal_(self.output.weight_ih_l1)
         
     def forward(self, sequence, hc=None):
         # Takes in the sequence of the form (batch_size x sequence_length x input_dim) and
