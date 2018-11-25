@@ -19,7 +19,7 @@ import pickle
 import sys
 
 
-# In[6]:
+# In[2]:
 
 
 def load_data(fname):
@@ -256,8 +256,8 @@ def train(model, X_train, X_valid, cfg):
     Optimizer = optim.Adam(model.parameters(), lr=l_rate, weight_decay=penalty) # Let's use ADAM
     
     # Size of each batch
-    trainbatchSize = 64
-    validbatchSize = 128
+    trainbatchSize = 32
+    validbatchSize = 16
     
     # Create the batch iterator for the data
     trainIter = getBatchIter(X_train, trainbatchSize)
@@ -334,8 +334,7 @@ def train(model, X_train, X_valid, cfg):
                 torch.save(model.state_dict(), 'ModelCheckpoints/LSTM.mdl')   
                 
             # TODO: Implement validation
-            
-            if batch_count % 3500 == 0:
+            if batch_count % 20000 == 0:
                 # Validate and save
                 vloss = validate(model, validIter, X_valid)
                 print("Validation on epoch %d on batch % has loss %f" % (e,batch_count,vloss))
@@ -356,7 +355,7 @@ def train(model, X_train, X_valid, cfg):
                     if spike >= thresh:
                         print("Early stopping on epoch %d" % e)
                         return
-                
+            
             
         print("Completed epoch %d" % e)
     
@@ -402,9 +401,23 @@ def generate(model, X_test, cfg):
             generated = np.array(start).reshape(-1,1)
             
             probs, hc = model(batch)
+            # Softmax over the input dim to get the probabilities
+            # Divide by temperature to implement the temperature softmax
+            probs = torch.nn.functional.softmax(probs/cfg['gen_temp'], dim = 2)
+
+            # Sample from our batchsize of probabilities to get batchsize of next output
+            sampled = np.array(torch.distributions.Categorical(probs).sample())
+
+            # Concatenate the sampled to our generated
+            generated = np.c_[generated,sampled].astype(int)
+
+            # Make our next input
+            newInput,_ = char2oh(np.c_[metas, sampled], translate, beers)
+            batch = torch.Tensor(newInput)
+            batch = batch.to(computing_device)
             
             # Current to length of the strings
-            curlen = 1
+            curlen = 2
             # While not all batches have at least one EOS we continue generating.
             while(not((generated == 110).any(axis=1).all())):
                 # If the string length is greater than the max allowed length, break
@@ -466,7 +479,7 @@ if __name__ == "__main__":
         computing_device = torch.device("cpu")
     model.to(computing_device)
     
-    #train(model, X_train, X_valid, cfg) # Train the model
+    train(model, X_train, X_valid, cfg) # Train the model
     #outputs = generate(model, X_test, cfg) # Generate the outputs for test data
     #save_to_file(outputs, out_fname) # Save the generated outputs to a file
 
