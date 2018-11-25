@@ -19,7 +19,7 @@ import pickle
 import sys
 
 
-# In[2]:
+# In[ ]:
 
 
 def load_data(fname):
@@ -257,7 +257,7 @@ def train(model, X_train, X_valid, cfg):
     
     # Size of each batch
     trainbatchSize = 32
-    validbatchSize = 16
+    validbatchSize = 32
     
     # Create the batch iterator for the data
     trainIter = getBatchIter(X_train, trainbatchSize)
@@ -331,9 +331,9 @@ def train(model, X_train, X_valid, cfg):
             # Save model checkpoint
             if batch_count % 1000 == 0:
                 # Model checkpoint
-                torch.save(model.state_dict(), 'ModelCheckpoints/LSTM.mdl')   
-                
-            # TODO: Implement validation
+                torch.save(model.state_dict(), 'ModelCheckpoints/GRU.mdl')   
+            
+            # Implement validation
             if batch_count % 20000 == 0:
                 # Validate and save
                 vloss = validate(model, validIter, X_valid)
@@ -382,9 +382,10 @@ def generate(model, X_test, cfg):
     allGenerated = []
     with torch.no_grad():
         # Get iterator
-        testIter = getBatchIter(X_test, batchSize = 1)
+        testIter = getBatchIter(X_test, batchSize = 1000)
     
-        for batch_count, batchInd in enumerate(testIter, 10):
+        for batch_count, batchInd in enumerate(testIter, 1):
+            print("Generating on batch %d" % batch_count)
              # Get the dataframe for the batch
             batchFrame = X_test.iloc[batchInd]
 
@@ -444,11 +445,12 @@ def generate(model, X_test, cfg):
                 batch = torch.Tensor(newInput)
                 batch = batch.to(computing_device)
             
-            
-            allGenerated += generated.tolist()
+            # We don't need the first and last characters/ <SOS> and <EOS>
+            allGenerated += generated[:,1:-1].tolist()
         
-        # Process each sentence back to ASCII
-        allGenerated = [''.join([chr(ASCII[c]) for c in s]) for s in allGenerated]
+        # Process each sentence back to ASCII, remove trailing <EOS>
+        allGenerated = [''.join([chr(ASCII[c]).strip('\x01') for c in s]) for s in allGenerated]
+        
         
         return allGenerated
         
@@ -460,7 +462,7 @@ def save_to_file(outputs, fname):
     
 
 
-# In[3]:
+# In[ ]:
 
 
 if __name__ == "__main__":
@@ -472,7 +474,7 @@ if __name__ == "__main__":
     test_data = load_data(test_data_fname) # Generating the pandas DataFrame
     X_train, X_valid = train_valid_split(train_data) # Splitting the train data into train-valid data
     
-    model = LSTM(cfg) # Replace this with model = <your model name>(cfg)
+    model = GRU(cfg) # Replace this with model = <your model name>(cfg)
     if cfg['cuda']:
         computing_device = torch.device("cuda")
     else:
