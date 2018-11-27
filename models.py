@@ -92,7 +92,7 @@ class LSTM(nn.Module):
         torch_init.xavier_normal_(self.recurrent.weight_ih_l1)
         
         # Fully connected output layer to map hidden to output dimensions/classes
-        self.output = torch.nn.Linear(in_features=config['hidden_dim'], out_features=config['output_dim'])
+        self.output = torch.nn.Linear(in_features=config['hidden_dim']*int(config['bidirectional']+1), out_features=config['output_dim'])
         
         # Initialize fully connected weights
         torch_init.xavier_normal_(self.output.weight)
@@ -140,7 +140,7 @@ class GRU(nn.Module):
         torch_init.xavier_normal_(self.recurrent.weight_ih_l1)
         
         # Fully connected output layer to map hidden to output dimensions/classes
-        self.output = torch.nn.Linear(in_features=config['hidden_dim'], out_features=config['output_dim'])
+        self.output = torch.nn.Linear(in_features=config['hidden_dim']*int(config['bidirectional']+1), out_features=config['output_dim'])
         
         # Initialize fully connected weights
         torch_init.xavier_normal_(self.output.weight)
@@ -149,7 +149,7 @@ class GRU(nn.Module):
     def forward(self, sequence, h=None):
         # Takes in the sequence of the form (batch_size x sequence_length x input_dim) and
         # returns the output of form (batch_size x sequence_length x output_dim)
-        if h == None:
+        if not(isinstance(h,torch.Tensor)):
             #recurrent layer if no hidden/cell
             out, h = self.recurrent(sequence)
         else:
